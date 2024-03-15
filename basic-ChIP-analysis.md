@@ -138,13 +138,6 @@ This step can also easily be run interactively on command line.
 
 **NOTE**: if the prefix is not set to *exactly* the same as what is before ".fasta", the job will fail.
 
-###### Alternatively Bowtie2 is commonly used for ChIP-seq alignment
-Making the `bowtie2` index:
-```bash
-
-```
-
-
 ### Mapping the reads
 Here starts the heavy duty work. Submit the trimming and alignment script `run_bwamem_wTrim_ChIP.sh`:
 ```bash
@@ -177,13 +170,11 @@ mkdir -p $tempDir
 # trim with skewer
 skewer -m pe -o $tempDir/results -t 30 -x $adaptor_x -y $adaptor_y $read1 $read2
 # align with BWA and make bam file
-bwa mem -t 30 $alignmentIndex $tempDir/results-trimmed-pair1.fastq $tempDir/results-trimmed-pair2.fastq | samtools view -bS - > $tempDir/aligned.bam
-mv $tempDir/aligned.bam $PE_NAME.bwa.mem.bam
+bwa mem -t 30 $alignmentIndex $tempDir/results-trimmed-pair1.fastq $tempDir/results-trimmed-pair2.fastq | samtools view -bS - > $PE_NAME.bwa.mem.bam
 
 # clean up
 rm -r $tempDir
 ```
-
 The resulting BAM files containg both mapping and non-mapping reads, and we want to filter them. For this step we use `samtools`, and set out filtering flag `-F` based on what we want. [This online tool](https://broadinstitute.github.io/picard/explain-flags.html) can help you figure out the numeric code needed.
 
 We filter the BAM file, sort it by genomic coordinate, and index it with the script `filter_sort_index_bam.sh`:
@@ -216,9 +207,46 @@ samtools index $outputDir/$rootName.filtered.sorted.bam
 rm -r $myTempDir
 ```
 
-#### Peak calling
-We are now ready to call peaks using `macs2`; for more in depth information about the ins and outs of `macs2`, you can check out [this HBC training page](https://hbctraining.github.io/Intro-to-ChIPseq/lessons/05_peak_calling_macs.html). As in the suggested directory structure, I would recommend having a separate output direcotry for the bam files and for the peak calling.
+#### Alternatively Bowtie2 is commonly used for ChIP-seq alignment
+Making the `bowtie2` index:
+```bash
+bowtie2-build <path_to_reference_genome.fa> <prefix_to_name_indexes>
+```
+Mapping the reads with `bowtie2`:
+```bash
+#!/bin/bash
+set -vxe
 
+# adapter sequences of the used libraries, below are examples, you need to know which were used in your run
+adaptor_x='CTGTCTCTTATACACATCTCCGAGCCCACGAGACNNNNNNNNATCTCGTATGCCGTCTTCTGCTTG'
+adaptor_y='CTGTCTCTTATACACATCTGACGCTGCCGACGANNNNNNNNGTGTAGATCTCGGTGGTCGCCGTATCATT'
+read1=/path/to/read1.fastq
+read2=/path/to/read2.fastq
+sampleName="NameOfChoice"
+alignmentIndex=/path/to/bowtieIndex
+outDir=/path/to/outputDirectory
+PE_NAME=$outDir/$sampleName
+mkdir -p $outDir
+
+#set temporary directory
+tempDir=$TMPDIR/$RANDOM.$sampleName
+mkdir -p $tempDir
+
+# trim with skewer
+skewer -m pe -o $tempDir/results -t 30 -x $adaptor_x -y $adaptor_y $read1 $read2
+# align with bowtie2
+bowtie2 -p 2 -q --local -x $alignmentIndex -1 $tempDir/results-trimmed-pair1.fastq -2 $tempDir/results-trimmed-pair2.fastq
+-S | samtools view -bS - > $PE_NAME.bowtie2.bam
+
+#clean up
+rm -r $myTempDir
+```
+
+## Peak calling
+We are now ready to call peaks using `macs2`; for more in depth information about the ins and outs of `macs2`, you can check out [this HBC training page](https://hbctraining.github.io/Intro-to-ChIPseq/lessons/05_peak_calling_macs.html). As in the suggested directory structure, I would recommend having a separate output directory for the bam files and for the peak calling.
+```bash
+mxqsub --processors=10 --memory=50G -t 12h --tmpdir=50G -N 'chip' --stderr ./logs/$(date "+%Y.%m.%d-%H.%M.%S").macs2.log ./src/run_macs2_callpeaks.sh
+```
 ###### The script you will be submitting:
 ```bash
 #!/bin/bash
@@ -259,7 +287,38 @@ sort -k1,1 -k2,2n unsorted.bedGraph | bedGraphToBigWig chrom.sizes out.sorted.bw
 
 #### Little extra: how do I run several samples in parallel?
 ##### Option 1: submit a script with a `for` loop
+```bash
+ID=/path/to/listOfSamples.txt
+inDir=/path/to/inputDirectory
+adaptor_x='CTGTCTCTTATACACATCTCCGAGCCCACGAGACNNNNNNNNATCTCGTATGCCGTCTTCTGCTTG'
+adaptor_y='CTGTCTCTTATACACATCTGACGCTGCCGACGANNNNNNNNGTGTAGATCTCGGTGGTCGCCGTATCATT'
+alignmentIndex=/path/to/bwaIndex
+outDir=/path/to/outputDirectory
 
+#set temporary directory
+tempDir=$TMPDIR/$RANDOM.$sampleName
+mkdir -p $tempDir
+
+for i in `cat $ID`; do 
+	read1=$inDir/"${i}_R1_001.fastq"
+	read2=$inDir/"${i}_R2_001.fastq"
+	sampleName="${i}"
+
+	# trim with skewer
+	skewer -m pe -o $tempDir/results -t 30 -x $adaptor_x -y $adaptor_y $read1 $read2
+	# align with BWA and make bam file
+	bwa mem -t 30 $alignmentIndex $tempDir/results-trimmed-pair1.fastq $tempDir/results-trimmed-pair2.fastq | samtools view -bS - > $PE_NAME.bwa.mem.bam
+
+	mkdir -p $outDir/"${i}"
+	/home/amonaco/miniconda3/bin/salmon quant -i $index -l A -1 $read1 -2 $read2 --validateMappings -o $outDir/"${i}"; 
+done
+
+
+
+
+# clean up
+rm -r $tempDir
+```
 
 ##### Option 2: run or submit using `parallel`
 ```bash
