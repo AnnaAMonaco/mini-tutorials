@@ -52,7 +52,7 @@ Job resource information:
                to specify years, weeks, days, hours and minutes
                Defaults to minutes if no suffix is set.
 ```
-It is **very important** to set `-memory`, `--tmpdir`, and `-t` so that your job does not get killed after 15 minutes, or almost instantly for heavy duty computing (like most aligning). Unforutnately, until you get familiar with your sequencing depth, genome size, and tool it is very much a guessing game, so err on the side of larger and longer. But don't exaggerate or IT will hate you.
+It is **very important** to set `-memory`, `--tmpdir`, and `-t` so that your job does not get killed after 15 minutes, or almost instantly for heavy duty computing (like most aligning). Unfortunately, until you get familiar with your sequencing depth, genome size, and tool it is very much a guessing game, so err on the side of larger and longer. But don't exaggerate or IT will hate you.
 
 ```
 Job grouping:
@@ -74,7 +74,6 @@ These are not super necessary, but giving your job a name will help you locate i
 
 
 ## QC and alignment
-
 Basic steps to check for sequencing quality with `fastqc` and proceed to read alignment.
 -Input:
   -Reads .fastq
@@ -82,13 +81,12 @@ Basic steps to check for sequencing quality with `fastqc` and proceed to read al
 -Output:
   -Unfiltered alignment file .bam
 
-
-#### QC with `fastqc`
+### QC with `fastqc`
 Submit the sequencing quality control script `run_fastqc.sh`:
 ```bash
 cd /path/to/parent/directory #make sure you're alway here before submitting
 
-mxqsub --processors=4 --memory=20G -t 1h --tmpdir=20G -N 'chip' --stderr ./logs/$(date "+%Y.%m.%d-%H.%M.%S").fastqc.log ./src/run_fastqc.sh
+mxqsub --processors=4 --memory=10G -t 30m --tmpdir=10G -N 'chip' --stderr ./logs/$(date "+%Y.%m.%d-%H.%M.%S").fastqc.log ./src/run_fastqc.sh
 ```
 ###### The script you will be submitting:
 ```bash
@@ -100,10 +98,19 @@ outDir=/path/to/outputDirectory
 mkdir -p $outDir/fastQC
 fastqc -o $outDir/fastQC $outDir/*fastq.gz
 ```
+As this is a very fast process, you can also run it interactively directly in the command line:
+```bash
+# assuming that all directories already exist
+outDir=/path/to/outputDirectory
+
+fastqc -o $outDir/fastQC $outDir/*fastq.gz
+```
+**NOTE**: When running interactively, it is highly recommended to use a virtual screen using `screen` or `tmux`. For example, you can open an interactive screen with `screen -S <nameofchoice>` and detach from it using `ctrl+A+D`. This way, whatever process you submitted will continue running even if you lose connection, and you can reaccess the screen with `screen -R <nameofchoice>`. To see which screens you have open, use `screen -ls`.
+
 The output is a html file containing all the statistics. Here are examples of [good Illumina data](https://www.bioinformatics.babraham.ac.uk/projects/fastqc/good_sequence_short_fastqc.html) and [bad Illumina data](https://www.bioinformatics.babraham.ac.uk/projects/fastqc/bad_sequence_fastqc.html) to compare your own to.
 
 
-#### Making a reference index
+### Making a reference index
 Now that you have established the (hopefully good) quality of your data, you can map it to your reference. However, you will not use a straight fasta file, but an index built on the fasta file. Each alignment tool builds its own index, and we will be using BWA for this analysis.
 
 First, make a directory that will contain your index. This can be in you parent directory, or in a dedicated indices directory stored alongside your reference genomes (my preferred way).
@@ -114,7 +121,7 @@ cd /path/to/bwaIndex
 ```
 Submit the indexing script `run_bwa_index.sh`:
 ```bash
-mxqsub --processors=4 --memory=20G -t 1h --tmpdir=20G -N 'chip' --stderr ./logs/$(date "+%Y.%m.%d-%H.%M.%S").fastqc.log ./src/run_bwa_index.sh
+mxqsub --processors=4 --memory=10G -t 1h --tmpdir=10G -N 'chip' --stderr ./logs/$(date "+%Y.%m.%d-%H.%M.%S").fastqc.log ./src/run_bwa_index.sh
 ```
 ###### The script you will be submitting:
 ```bash
@@ -127,10 +134,18 @@ prefix="fasta.name"
 
 bwa index $fasta -p $prefix
 ```
+This step can also easily be run interactively on command line.
+
 **NOTE**: if the prefix is not set to *exactly* the same as what is before ".fasta", the job will fail.
 
+###### Alternatively Bowtie2 is commonly used for ChIP-seq alignment
+Making the `bowtie2` index:
+```bash
 
-#### Mapping the reads
+```
+
+
+### Mapping the reads
 Here starts the heavy duty work. Submit the trimming and alignment script `run_bwamem_wTrim_ChIP.sh`:
 ```bash
 cd /path/to/parent/directory # make sure you are back in your parent directory
