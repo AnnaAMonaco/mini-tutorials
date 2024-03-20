@@ -287,48 +287,32 @@ sort -k1,1 -k2,2n unsorted.bedGraph | bedGraphToBigWig chrom.sizes out.sorted.bw
 
 #### Little extra: how do I run several samples in parallel?
 ##### Option 1: submit a script with a `for` loop
-```bash
-ID=/path/to/listOfSamples.txt
-inDir=/path/to/inputDirectory
-adaptor_x='CTGTCTCTTATACACATCTCCGAGCCCACGAGACNNNNNNNNATCTCGTATGCCGTCTTCTGCTTG'
-adaptor_y='CTGTCTCTTATACACATCTGACGCTGCCGACGANNNNNNNNGTGTAGATCTCGGTGGTCGCCGTATCATT'
-alignmentIndex=/path/to/bwaIndex
-outDir=/path/to/outputDirectory
+You can use a `for` loop in the script you submit with `mxqsub`, which will iterate over each sample defined in a list of samples you provide. Keep in mind that each iteration will happen one at a time, so you will need to increase the memory and/or time requirements accordingly.
 
-#set temporary directory
-tempDir=$TMPDIR/$RANDOM.$sampleName
-mkdir -p $tempDir
-
-for i in `cat $ID`; do 
-	read1=$inDir/"${i}_R1_001.fastq"
-	read2=$inDir/"${i}_R2_001.fastq"
-	sampleName="${i}"
-
-	# trim with skewer
-	skewer -m pe -o $tempDir/results -t 30 -x $adaptor_x -y $adaptor_y $read1 $read2
-	# align with BWA and make bam file
-	bwa mem -t 30 $alignmentIndex $tempDir/results-trimmed-pair1.fastq $tempDir/results-trimmed-pair2.fastq | samtools view -bS - > $PE_NAME.bwa.mem.bam
-
-	mkdir -p $outDir/"${i}"
-	/home/amonaco/miniconda3/bin/salmon quant -i $index -l A -1 $read1 -2 $read2 --validateMappings -o $outDir/"${i}"; 
-done
-
-
-
-
-# clean up
-rm -r $tempDir
-```
-
-##### Option 2: run or submit using `parallel`
-```bash
-cat Ss31-samples.txt | xargs -P 6 -n 1 bash src/run-macs2-hs.sh
-cat Ss31-samples.txt | parallel --max-procs=12 'macs2 callpeak -t {}.rmdup.bam -c {}.input.bam -n {}_peaks -B --outdir data/{}_peaks -f BAM -g mm --call-summits'
-```
-Sumbitting a script that looks like this:
+The script for `run_macs2_callpeaks.sh` modified to contain a `for` loop will look like this:
 ```bash
 #! /usr/bin/bash
 set -vxe
-macs2 callpeak -t input/"$1".rmdup.bam -n "$1"_peaks -B --outdir data/"$1"-peaks -f BAMPE -g mm --call-summits
+
+ID=/path/to/listOfSamples.txt
+inDir=/path/to/inputDirectory
+outDir=/path/to/outputDirectory
+
+for i in `cat $ID`; do 
+	macs2 callpeak -t $inDir/"${i}".rmdup.bam -n "${i}"_peaks -B --outdir $outDir/"${i}"-peaks -f BAM -g mm --call-summits
+done
 ```
 
+##### Option 2: run or submit using `parallel`
+You can use `parallel` to submit multiple samples at once, provided you have a list of the samples you want to submit. You will first set the arguments and specify the script to submit with `xargs`, you can read more about the different `xarg` options [here](https://man7.org/linux/man-pages/man1/xargs.1.html), or as usual typing `xargs --help` in the command line. The list of samples then can be passed to `parallel`, which will run the script provided - as the name suggests - in parallel. The `parallel` command is followed by the actual script command in single quotes, where the variable argument (aka, your diffeerent samples) are represented by the positional replacement `{}`.
+```bash
+cat list-samples.txt | xargs -P 6 -n 1 bash src/run_macs2_callpeaks.sh
+cat list-samples.txt | parallel --max-procs=12 'macs2 callpeak -t {}.rmdup.bam -c {}.input.bam -n {}_peaks -B --outdir data/{}_peaks -f BAM -g mm --call-summits'
+```
+Using a slightly modified script that looks like this:
+```bash
+#! /usr/bin/bash
+set -vxe
+macs2 callpeak -t input/"$1".rmdup.bam -n "$1"_peaks -B --outdir data/"$1"-peaks -f BAM -g mm --call-summits
+```
+**NOTE**: This does not *submit* a script in parallel, but runs them in parallel interactively. To submit it, you can write a script with the `parallel` lines listed above, and submit it as previously with `mxqsub`.
