@@ -2,7 +2,7 @@
 
 ## Quick start to cluster computing
 
-The following walk though assumes the following directory layout, wich is also the recommended one:
+The following walk though assumes the following directory layout, which is also the recommended one:
 ```
 04_ChIP
 ├── data
@@ -145,34 +145,29 @@ cd /path/to/parent/directory # make sure you are back in your parent directory
 
 mxqsub --processors=10 --memory=50G -t 12h --tmpdir=50G -N 'chip' --stderr ./logs/$(date "+%Y.%m.%d-%H.%M.%S").bwamem.log ./src/run_bwamem_wTrim_ChIP.sh
 ```
+The script loops through multiple samples, the names of which need to be put in a table (`sample-table.txt` below).
+
 ###### The script you will be submitting:
 ```bash
 #!/bin/bash
 set -vxe
 
-# set variables
-# adapter sequences of the used libraries, below are examples, you need to know which were used in your run
-adaptor_x='CTGTCTCTTATACACATCTCCGAGCCCACGAGACNNNNNNNNATCTCGTATGCCGTCTTCTGCTTG'
-adaptor_y='CTGTCTCTTATACACATCTGACGCTGCCGACGANNNNNNNNGTGTAGATCTCGGTGGTCGCCGTATCATT'
-read1=/path/to/read1.fastq
-read2=/path/to/read2.fastq
-sampleName="NameOfChoice"
+#set variables
 alignmentIndex=/path/to/bwaIndex
+ID=/path/to/sample-table.txt
+inDir=/path/to/fastqs
 outDir=/path/to/outputDirectory
-PE_NAME=$outDir/$sampleName
-# this makes sure the output exists
-mkdir -p $outDir
 
 #set temporary directory
 tempDir=$TMPDIR/$RANDOM.$sampleName
 mkdir -p $tempDir
 
-# trim with skewer
-skewer -m pe -o $tempDir/results -t 30 -x $adaptor_x -y $adaptor_y $read1 $read2
-# align with BWA and make bam file
-bwa mem -t 30 $alignmentIndex $tempDir/results-trimmed-pair1.fastq $tempDir/results-trimmed-pair2.fastq | samtools view -bS - > $PE_NAME.bwa.mem.bam
+for i in `cat $ID`; do 
+	trim_galore --illumina --basename "${i}" --paired $inDir/"${i}"_R1_001.fastq.gz $inDir/"${i}"_R2_001.fastq.gz -o $tempDir
+	bwa mem -t 30 $alignmentIndex $tempDir/"${i}"_val_1.fq.gz $tempDir/"${i}"_val_2.fq.gz | samtools view -b - > $outDir/"${i}".bwa.mem.bam
+done
 
-# clean up
+#clean up
 rm -r $tempDir
 ```
 The resulting BAM files containg both mapping and non-mapping reads, and we want to filter them. For this step we use `samtools`, and set out filtering flag `-F` based on what we want. [This online tool](https://broadinstitute.github.io/picard/explain-flags.html) can help you figure out the numeric code needed.
