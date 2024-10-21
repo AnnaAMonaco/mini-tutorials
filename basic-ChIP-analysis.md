@@ -170,7 +170,7 @@ done
 #clean up
 rm -r $tempDir
 ```
-The resulting BAM files containg both mapping and non-mapping reads, and we want to filter them. For this step we use `samtools`, and set out filtering flag `-F` based on what we want. [This online tool](https://broadinstitute.github.io/picard/explain-flags.html) can help you figure out the numeric code needed.
+The resulting BAM files containg both mapping and non-mapping reads, and we want to filter them. For this step we use `samtools`, and set out filtering flag `-F` based on what we want. [This online tool](https://broadinstitute.github.io/picard/explain-flags.html) can help you figure out the numeric code needed. An additional step to properly remove duplicates using `gatk MarkDuplicates` (Picard) was added on [<u>21.10.2024</u>].
 
 We filter the BAM file, sort it by genomic coordinate, and index it with the script `filter_sort_index_bam.sh`:
 ```bash
@@ -181,28 +181,24 @@ mxqsub --processors=10 --memory=50G -t 12h --tmpdir=50G -N 'chip' --stderr ./log
 #!/bin/bash
 set -vxe
 
-inputBam=/path/to/aligned/bwa.mem.bam
-outputDir=/path/to/outputDirectory
-rootName=`basename $inputBam .bam`
+ID=/path/to/sample-table.txt
+outDir=/path/to/outputDirectory
 
-#set temporary directory
-myTempDir=$TMPDIR/$RANDOM.$rootName
-mkdir -p $myTempDir
-
-#first we filter and name sort
-samtools view -b -F 3332 -q 20 $inputBam | samtools sort --threads 20 -T $myTempDir -n -o $myTempDir/$rootName.nameSorted.bam -
-#then we fixmate
-samtools fixmate $myTempDir/$rootName.nameSorted.bam $myTempDir/$rootName.nameSorted.matefixed.bam
-#sort by coordinates
-samtools sort --threads 20 -T $myTempDir -o $outputDir/$rootName.filtered.sorted.bam $myTempDir/$rootName.nameSorted.matefixed.bam
-#and index
-samtools index $outputDir/$rootName.filtered.sorted.bam
+for i in `cat $ID`; do 
+	myTempDir=$TMPDIR/$RANDOM."${i}"
+	mkdir -p $myTempDir
+	samtools view -b -F 3332 -q 20 $outDir/"${i}".bwa.mem.bam | samtools sort --threads 20 -T $myTempDir -n -o $myTempDir/"${i}".nameSorted.bam -
+	samtools fixmate $myTempDir/"${i}".nameSorted.bam $myTempDir/"${i}".nameSorted.matefixed.bam
+	samtools sort --threads 20 -T $myTempDir -o $outDir/"${i}".filtered.sorted.bam $myTempDir/"${i}".nameSorted.matefixed.bam
+	gatk MarkDuplicates -I=$outDir/"${i}".filtered.sorted.bam -O=$outDir/"${i}".filtered.sorted.rmDup.bam -M=$outDir/"${i}".dupMetrics.txt --REMOVE_DUPLICATES true 
+	samtools index $outDir/"${i}".filtered.sorted.rmDup.bam
+done
 
 #clean up
 rm -r $myTempDir
 ```
 
-#### Alternatively Bowtie2 is commonly used for ChIP-seq alignment
+#### Alternatively Bowtie2 is commonly used for ChIP-seq alignment [UNTESTED]
 Making the `bowtie2` index:
 ```bash
 bowtie2-build <path_to_reference_genome.fa> <prefix_to_name_indexes>
@@ -247,12 +243,13 @@ mxqsub --processors=10 --memory=50G -t 12h --tmpdir=50G -N 'chip' --stderr ./log
 #!/bin/bash
 set -vxe
 
-inBam=/path/to/filteredSorted/bwa.mem.bam
 input=/path/to/filteredSorted/input.bam
-rootName=`basename $inBam .bam`
+ID=/path/to/sample-table.txt
 outDir=/path/to/outputDirectory
 
-macs2 callpeak -t $inBam -c $input -n $rootName.peaks -B --outdir $outDir -f BAM -g mm --call-summits
+for i in `cat $ID`; do 
+	macs2 callpeak -t $outDir/"${i}".filtered.sorted.bam -c $input -n "${i}".peaks -B --outdir $outDir -f BAM -g mm --call-summits
+done
 ```
 In the script, the option `-g` is for genome size, and it can be a numeric value -- such as `-g 1.3e+8` -- or one of the available shortcuts for three of the main model organisms: human (`hs`), mouse (`mm`), and fruit fly (`dm`). The `-B` option generates bedGraph files for ech sample, which can be used for visualisation in the genome. 
 
