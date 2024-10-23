@@ -190,7 +190,7 @@ for i in `cat $ID`; do
 	samtools view -b -F 3332 -q 20 $outDir/"${i}".bwa.mem.bam | samtools sort --threads 20 -T $myTempDir -n -o $myTempDir/"${i}".nameSorted.bam -
 	samtools fixmate $myTempDir/"${i}".nameSorted.bam $myTempDir/"${i}".nameSorted.matefixed.bam
 	samtools sort --threads 20 -T $myTempDir -o $outDir/"${i}".filtered.sorted.bam $myTempDir/"${i}".nameSorted.matefixed.bam
-	gatk MarkDuplicates -I=$outDir/"${i}".filtered.sorted.bam -O=$outDir/"${i}".filtered.sorted.rmDup.bam -M=$outDir/"${i}".dupMetrics.txt --REMOVE_DUPLICATES true 
+	gatk MarkDuplicates -I $outDir/"${i}".filtered.sorted.bam -O $outDir/"${i}".filtered.sorted.rmDup.bam -M $outDir/"${i}".dupMetrics.txt --REMOVE_DUPLICATES true 
 	samtools index $outDir/"${i}".filtered.sorted.rmDup.bam
 done
 
