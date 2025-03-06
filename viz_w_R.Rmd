@@ -1,0 +1,484 @@
+---
+title: "Basic visualisation in R"
+output: html_document
+---
+
+## Requirements for this mini-tutorial
+```{r echo=FALSE, results = "hide"}
+library(knitr)
+library(rmarkdown)
+```
+
+The following libraries are necessary for this mini-tutorial, make sure you have them installed before starting.
+```{r warnings=FALSE}
+# data wrangling
+library(dplyr)
+library(stringr)
+library(reshape2)
+# visualisation
+library(ggplot2)
+library(ggrepel)
+library(cowplot)
+library(patchwork)
+# palettes
+library(RColorBrewer)
+library(viridis)
+library(rcartocolor)
+library(wesanderson)
+```
+
+As a toy dataset we will use `mpg`, which is included in base R.
+```{r}
+head(mpg)
+```
+`mpg` is a toy data frame with 32 observations on 11 (numeric) variables.
+```
+[, 1]	mpg	Miles/(US) gallon
+[, 2]	cyl	Number of cylinders
+[, 3]	disp	Displacement (cu.in.)
+[, 4]	hp	Gross horsepower
+[, 5]	drat	Rear axle ratio
+[, 6]	wt	Weight (1000 lbs)
+[, 7]	qsec	1/4 mile time
+[, 8]	vs	Engine (0 = V-shaped, 1 = straight)
+[, 9]	am	Transmission (0 = automatic, 1 = manual)
+[,10]	gear	Number of forward gears
+[,11]	carb	Number of carburetors
+```
+A basic level of R is assumed, such as data structures, very basic data wrangling, and basic commands.
+
+## Base R vs `ggplot2` 
+Base R can be used for plotting, but can be more tricky to customise the aesthetics. On the other hand, `ggplot2` is widely used and documented and allows for (relatively) easy plot customisation. Virtually all plot types can be done in either or:
+```{r}
+plot(mpg$displ, mpg$hwy)
+```
+```{r}
+ggplot(mpg, aes(x = displ, y = hwy)) + 
+  geom_point()
+```
+
+```{r}
+boxplot(displ ~ manufacturer, data=mpg)
+```
+```{r}
+ggplot(mpg, aes(x=manufacturer, y=displ, group=manufacturer)) +
+  geom_boxplot()
+```
+
+In the rest of the mini workshop I will be using the `ggplot` package for plotting, but you can use whichever you prefer: the basic dos and don'ts still count.
+
+### Aesthetics in `ggplot2`
+In `ggplot2`, the `aes()` - or aesthetics - is where you sore the information to build your plot. These include x and y axis, but also colour, fill (more about that later), grouping, shape, transparency, size. 
+```
+ggplot(data, #your dataframe
+       aes(
+         x=a, #variable you want on the x axis
+         y=b, #variable you want on the y axis
+         color=c, #variable that determines outline or point colour
+         fill=d, #variable that determines fill colour
+         size=e, #variable that determines size
+         alpha=f, #variable that determines transparency
+         shape=g #variable that determines shape
+       ))
+```
+All other `aes()` variables that are not x and y can either be variables (columns in the dataframe) or can be fixed:
+```{r}
+# variable color and size
+p1 <- ggplot(mpg, aes(x=displ, y=hwy, color=class, size=cyl)) +
+  geom_point() +
+  ggtitle("variable aesthetics")
+# fixed color and size
+p2 <- ggplot(mpg, aes(x=displ, y=hwy)) +
+  geom_point(color="brown1", size=3) +
+  ggtitle("fixed aesthetics")
+p1+p2
+```
+
+#### Working with colours
+
+Colour is the second most important factor in your plotting - the first obviously being what kind of plot you choose - because we are wired to intuitively distinguish different colours as having different meaning. This also means that using them incorrectly can lead to difficult or incorrect interpretation of the data.
+I you take home a single message from this section, let it be that **your palette should be colour blind-friendly and (therefore) have high contrast**.
+
+There are some R packages that allow you to check your plots for colour blindness, such as `colorspace` and `colorblindr`. We won't use them today, but here is an example:
+```{r}
+library(colorspace)
+library(colorblindr)
+
+# default ggplot colours
+p <- ggplot(mpg, aes(x=as.factor(cyl), y=displ, fill=as.factor(cyl))) +
+  geom_boxplot()
+p
+```
+```{r}
+# colourblind rendering
+cvd_grid(p)
+```
+
+Let's try a palette with better contrast.
+```{r}
+p2 <- ggplot(mpg, aes(x=as.factor(cyl), y=displ, fill=as.factor(cyl))) +
+  geom_boxplot() +
+  scale_fill_manual(values=viridis(4))
+p2
+```
+```{r}
+# colourblind rendering
+cvd_grid(p2)
+```
+
+You can appreciate the power of strong contrast. The `viridis` package used here includes a very nice set of colour blind friendly palettes.
+```{r}
+swatchplot(c(
+  viridis(10),
+  magma(10),
+  mako(10),
+  rocket(10)
+  ), nrow=4)
+```
+
+Other nice pre-existing palettes include `cartocolors` and `wesanderson`, but are less flexible in the number of hues they will generate.
+
+In `ggplot2`, `fill` and `color` cover two different aspects and can be modified independently.
+```{r}
+ggplot(mpg, aes(x=as.factor(cyl), y=displ, fill=as.factor(cyl))) +
+  geom_boxplot() +
+  geom_jitter() +
+  scale_fill_manual(values=viridis(4))
+```
+```{r}
+ggplot(mpg, aes(x=as.factor(cyl), y=displ, fill=as.factor(cyl), color=as.factor(cyl))) +
+  geom_boxplot() +
+  geom_jitter() +
+  scale_fill_manual(values=viridis(4)) +
+  scale_color_manual(values=viridis(4))
+```
+```{r}
+ggplot(mpg, aes(x=as.factor(cyl), y=displ, fill=as.factor(cyl))) +
+  geom_boxplot() +
+  geom_jitter(aes(color=as.factor(cyl)),alpha=0.6) +
+  scale_fill_manual(values=viridis(4)) +
+  scale_color_manual(values=viridis(4))
+```
+
+There are many ways to set colour scales for either continuous variables or categorical variables, but the most simple to remember for ggplot are `scale_*_continuous` for continuous variables and `scale_*_discrete` for categorical variables. Below two examples:
+```{r}
+ggplot(mpg, aes(x=as.factor(cyl), y=displ, fill=as.factor(cyl))) +
+  geom_boxplot() +
+  geom_jitter(aes(color=hwy),alpha=0.6) +
+  scale_fill_discrete() +
+  scale_color_continuous()
+```
+
+We can obviously choose the palettes we want to use:
+```{r}
+ggplot(mpg, aes(x=as.factor(cyl), y=displ, fill=as.factor(cyl))) +
+  geom_boxplot() +
+  geom_jitter(aes(color=hwy),alpha=0.6) +
+  scale_fill_manual(values=viridis(4)) +
+  scale_color_gradient(low="white", high="grey18")
+```
+
+##### AVOID: Bidirectional colour scales for unidirectional data
+
+Let's make toy RNA-seq-like datasets to demonstrate this.
+```{r}
+# unidirectional data
+Dir1 <- data.frame(
+  "FPKM" = c(5, 10, 20, 40, 60, 80, 100, 120),
+  "Gene" = 1:8
+)  
+# bidirectional data
+Dir2 <- data.frame(
+  "log2FC" = c(-10, -4, -2, 0, 2, 4, 10),
+  "Gene" = 1:7
+)
+```
+
+These are good examples of use of colour scales. In the first case, the minimum and maximum value have minimum and maximum colours can be identified. In the second case, the central value of zero also has a specific meaning, which is highlighted by the assignmetn fo a sp[ecific colour.
+```{r echo = FALSE}
+p <- list()
+p[[1]] <- Dir1 %>% 
+ ggplot(aes(x = Gene, y = FPKM)) +
+  geom_hline(yintercept = 0, linewidth = 1) +
+  geom_segment(aes(x = Gene, xend = Gene), 
+               yend = 0, size = 1.2, alpha = 0.8, color = "grey60") +
+  geom_point(shape = 21, size = 4, aes(fill = FPKM)) +
+  scale_fill_gradientn(colors = viridis(n = 10)) +
+  theme_minimal() +
+  theme(
+    text = element_text(size = 14, color = "black"), 
+    axis.text = element_text(color = "black"), 
+    axis.text.y = element_blank(), 
+    plot.caption = element_text(hjust = 0, size = 12)
+  ) +
+  coord_flip()
+
+p[[2]] <- Dir2 %>% 
+ ggplot(aes(x = Gene, y = log2FC)) +
+  geom_hline(yintercept = 0, linewidth = 1) +
+  geom_segment(aes(x = Gene, xend = Gene), 
+               yend = 0, size = 1.2, alpha = 0.8, color = "grey60") +
+  geom_point(shape = 21, size = 4, aes(fill = log2FC)) +
+  scale_fill_gradientn(colors = rev(brewer.pal(11, "RdBu"))) +
+  theme_minimal() +
+  theme(
+    text = element_text(size = 14, color = "black"), 
+    axis.text = element_text(color = "black"), 
+    axis.text.y = element_blank(), 
+    plot.caption = element_text(hjust = 0, size = 12)
+  ) +
+  coord_flip()
+p[[1]] + p[[2]]
+```
+
+This is a bad example, because the mid value here does not mean anything and assigning it it's own colour is counterintuitive.
+```{r echo = FALSE}
+ggplot(Dir1, aes(x = Gene, y = FPKM)) +
+  geom_hline(yintercept = 0, linewidth = 1) +
+  geom_segment(aes(x = Gene, xend = Gene), 
+               yend = 0, size = 1.2, alpha = 0.8, color = "grey60") +
+  geom_point(shape = 21, size = 4, aes(fill = FPKM)) +
+  scale_fill_gradientn(colors = rev(brewer.pal(11, "RdBu"))) +
+  theme_minimal() +
+  theme(
+    text = element_text(size = 14, color = "black"), 
+    axis.text = element_text(color = "black"), 
+    axis.text.y = element_blank(), 
+    plot.caption = element_text(hjust = 0, size = 12)
+  ) +
+  coord_flip()
+```
+
+#### Size (and shape) sometimes matters
+
+You've already seen that size and shape can be changed, and this can be useful to convey additional information to a plot, especially if something is already assigned to colour: size can add an additional continuous variable and shape can add a categorical variable. Transparency (`alpha`) can also add depth of information - for both categorical and continuous variable - but in most cases it is advised against.
+```{r}
+p1 <- ggplot(mpg, aes(displ, manufacturer, color=manufacturer, size = hwy)) +
+  geom_point(alpha = .3) +
+  guides(color="none")
+p2 <- ggplot(mpg, aes(displ, manufacturer, color=manufacturer, shape = drv)) +
+  geom_point(alpha = .3)  +
+  guides(color="none")
+p1+p2
+```
+
+## Main types of plots you are likely to use
+`iris` is another built-in dataset in base R that we will be using alongside `mpg`, since it has a bit more of a biological background.
+
+### Dot plot
+A dot plot is conventionally a plot where you have numerical (continuous) variables on one axis and categorical variables on the other, such as this:
+```{r echo=FALSE}
+ggplot(iris, aes(Species, Sepal.Length)) +
+  geom_point() + coord_flip()
+```
+
+However, for the purpose of this tutorial I will group all plots generated with `geom_point()` into this category.
+
+**TIP:** If you have large datasets with many datapoints, set the `alpha` to a lower value to not end up with an overwhelming blob.
+
+#### Scatter plot
+Let's see how petal length and sepal length depend on each other in iris species.
+```{r}
+ggplot(iris, aes(Sepal.Length, Petal.Length)) +
+  geom_point()
+```
+
+This gives us some information, but we know that there are 3 species in this dataset, and maybe they have different trends. We can represent them with different colours.
+```{r}
+ggplot(iris, aes(Sepal.Length, Petal.Length, color=Species)) +
+  geom_point()
+```
+
+What can we conclude from these plots?
+
+##### Lion's Q: How to best visualise bulk RNA-seq?
+My opinion: MA plots, volcano plots, expression scatterplots - which are all forms of scatterplots.
+I will load a small fraction of the output of one of my `DESeq2` analysis for this.
+```{r}
+res <- read.delim()
+# I always add a threshold variable for plotting
+res <- res %>% mutate(threshold = padj < 0.05 & abs(log2FoldChange) > 0.5)
+
+head(res)
+```
+
+An **MA plot** shows a bidirectional variable on the y axis, and a unidirectional variable on the x axis, in the case of bulk RNA-seq these will be log fold-change and total counts of gene expression between contrasts. This plot shows you the effect size of the comparison in function of the expressio level.
+```{r}
+ggplot(res, aes(x = log10(meanCounts), y = log2FC, color=threshold)) +
+    geom_point(alpha=.5) +
+    scale_colour_manual(values = c("TRUE" = "brown1", "FALSE" = "grey18")) +
+    ggtitle("case A vs case B") +
+    xlab("mean expression") + 
+    ylab("log2 fold change") +
+    theme_classic()
+```
+A more classic **volcano plot** had a bidirectional x axis showing the LFC, and a unidirectional y axis showing the -log10 of the adjusted p value. Here you see the effect size (LFC) in function of the statistical significance (padj).
+```{r}
+ggplot(res, aes(x = log2FC, y = -log10(padj), color=threshold)) +
+    geom_point(alpha=.5) +
+    scale_colour_manual(values = c("TRUE" = "brown1", "FALSE" = "grey18")) +
+    ggtitle("case A vs case B") +
+    xlab("log2FC") + 
+    ylab("-log10(adjusted p)") +
+    theme_classic()
+```
+
+Finally, an **expression scatterplot** displays directly the average expression levels on each case you are contrasting, where the DEGs deviate from the y = x diagonal. For this you need to extract the counts directly, and I will show this in the upcoming bulk RNA-seq tutorial.
+
+#### Bubble plot
+```{r}
+ggplot(iris, aes(Species, Sepal.Length, color=Species, size=Sepal.Width)) +
+  geom_point(alpha=0.4) + coord_flip()
+```
+
+#### Linking point with a line
+```{r}
+# fitting a linear model with lm
+p1 <- ggplot(iris, aes(Sepal.Length, Petal.Length, color=Species)) +
+  geom_point() +
+  geom_smooth(aes(group = Species), method = "lm", alpha=0.3)
+# fitting a loess model (dynamic)
+p2 <- ggplot(iris, aes(Sepal.Length, Petal.Length, color=Species)) +
+  geom_point() +
+  geom_smooth(aes(group = Species), method = "loess", alpha=0.3)
+p1+p2
+```
+
+### Jitter plot
+```{r}
+p1 <- ggplot(iris, aes(Species, Sepal.Length, color=Species)) +
+  geom_point(alpha=0.4)
+p2 <- ggplot(iris, aes(Species, Sepal.Length, color=Species)) +
+  geom_jitter(alpha=0.4)
+p1+p2
+```
+
+### Bar plot
+```{r}
+p1 <- ggplot(iris, aes(Petal.Length, fill=Species)) +
+  geom_bar(stat = "count", position = "dodge") + theme(legend.position="none")
+p2 <- ggplot(iris, aes(x=Species, y=Petal.Length, fill=Species)) +
+  geom_bar(stat="identity")
+p1+p2
+```
+
+#### Proportion stacked bar plots instead of pie charts
+Humans do not intuitively understand angle-based differences and a pie chart in `ggplot2` is anyway a bar cplot with extra steps.
+```{r results=FALSE}
+manufacturer_proportions <- mpg %>% 
+  group_by(manufacturer, year) %>% 
+  summarise(count = n()) %>% 
+  group_by(year) %>% 
+  mutate(proportion = count / sum(count))
+```
+```{r}
+blank_theme <- theme_minimal()+
+  theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.border = element_blank(),
+  panel.grid=element_blank(),
+  axis.ticks = element_blank(),
+  plot.title=element_text(size=14, face="bold")
+  )
+p1 <- ggplot(manufacturer_proportions, aes(fill=reorder(manufacturer,proportion), y=proportion, x="")) +
+  geom_bar(width = 0.5, size = 0.5, color = "white", stat = "identity") +
+  coord_polar("y", start=0) +
+  blank_theme +
+  facet_wrap(~year) +
+  theme(axis.text.x=element_blank(), legend.position="bottom")
+
+p2 <- ggplot(manufacturer_proportions, aes(x = as.factor(year), y = proportion, fill = reorder(manufacturer,proportion))) +
+  geom_bar(color = "white", width = 0.7, stat = "identity") +
+  theme_classic() +
+  theme(legend.position="none")
+plot_grid(p1, p2, align="h", ncol=2, rel_widths = c(2,1))
+```
+
+
+##### AVOID: Bar plots for means separation
+
+For this demonstrations I will simulate two groups, one with normal distribution and one with lognormal distribution.
+```{r}
+set.seed(666)
+group1 <- rnorm(n = 100, mean = 1, sd = 1)
+group2 <- rlnorm(n = 100, 
+                 meanlog = log(1^2/sqrt(1^2 + 1^2)), 
+                 sdlog = sqrt(log(1+(1^2/1^2))))
+groups_df <- cbind(
+  group1,
+  group2
+) %>% 
+  as.data.frame() %>% melt()
+head(groups_df)
+```
+
+tests
+```{r}
+t.test(group1, group2)$p.value
+wilcox.test(group1, group2)$p.value
+ks.test(group1, group2)$p.value
+```
+
+```{r}
+# barplot
+bar <- ggplot(groups_df, aes(x = variable, y = value)) +
+  geom_bar(stat = "summary",
+           width = 0.7, alpha = 0.8, fun=mean,
+           aes(fill = variable)) + 
+  ggtitle("p value is 0.7571234") +
+  theme_classic() + theme(legend.position="none")
+  
+# Boxplot
+box <- ggplot(groups_df, aes(x = variable, y = value)) +
+  geom_boxplot(width = 0.7, alpha = 0.8, 
+          aes(fill = variable)) +
+  ggtitle("p value is 0.7759086") +
+  theme_classic() + theme(legend.position="none")
+
+# violin plot
+violin <- ggplot(groups_df, aes(x = variable, y = value)) +
+  geom_violin(aes(fill = variable)) +
+  ggtitle("p value is 0.03663105") +
+  theme_classic() + theme(legend.position="none")
+
+# combine plots
+plot_grid(bar, box, violin, align="h", ncol=3)
+```
+
+
+##### AVOID: Confusing position-based viz with length-based viz
+
+##### AVOID: Not checking the data range at each factor level
+
+### Box plot
+
+### Violin plot
+
+##### AVOID: Violin plots for small sample sizes
+
+### Heatmap
+
+##### AVOID: Unclustered heatmaps
+
+##### AVOID: Heatmaps without checking for outliers
+
+
+## Composite plots
+
+### Faceting avoids overwhelming "meadows"
+
+### Violin plot with boxplot inside
+You get information on both mean and distribution
+
+### Adding data points to other plots
+
+### Adding statistical information
+Error bars, mean, median, etc.
+
+
+
+
+
+
+
