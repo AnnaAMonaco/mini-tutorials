@@ -1,3 +1,4 @@
+# WORK IN PROGRESS
 Here you will learn the basics of analysing scRNA-seq datasets in R. I will cover the following steps:
 - Loading mapped data from salmon alevin and from cellranger
 - Quality control and filtering
@@ -159,7 +160,116 @@ names(my.sobj) <- my.samplenames
 ```
 
 
-## Integrating multiple datasets
-## Normalisation
+## Normalisation and integrating multiple datasets
+We regress out sources of uninteresting variation, like cell cycle status and overall RNA amount 
+```{r}
+set.seed(374)
+my.cc <- cc.genes.updated.2019
+my.samples <- lapply(my.samples, function(x){
+  x <- NormalizeData(x, normalization.method = "LogNormalize", scale.factor = 10000, verbose = F)
+  x <- FindVariableFeatures(x, selection.method = "vst", nfeatures = 10000)
+  x <- CellCycleScoring(x, s.features = my.cc$s.genes, g2m.features = my.cc$g2m.genes)
+  return(x)
+})
+my.samples <- lapply(X = my.samples, FUN = SCTransform,
+                    vars.to.regress = c("nCount_RNA","S.Score", "G2M.Score"),
+                    verbose = FALSE, return.only.var.genes = F)
+```
+We then integrate out datasets based on a subset of the expresse genes, selected using `SelectIntegrationFeatures()`. These can be a specific amount of genes, or a proportion of the overall variable features.
+```{r}
+my.features <- SelectIntegrationFeatures(object.list = my.samples, nfeatures = 3000)
+options(future.globals.maxSize = 30 * 1024^3)  # 30 GiB
+my.samples <- PrepSCTIntegration(object.list = my.samples, anchor.features = my.features, verbose = FALSE)
+my.anchors <- FindIntegrationAnchors(my.samples, normalization.method = "SCT", anchor.features = my.features,
+                                    verbose = FALSE, dims = 1:50, k.filter = 100)
+my.se <- IntegrateData(anchorset = my.anchors, normalization.method = "SCT", verbose = FALSE, preserve.order=TRUE)
+```
+
 ## Dimensionality reduction and clustering
+Find variable features and run PCA
+```{r}
+# get variable features
+my.se <- FindVariableFeatures(my.se, method="sct", assay = "integrated")
+# Only the genes with variability > median
+my.HVF <- HVFInfo(my.se, method="sct")
+my.HVF <- rownames(my.HVF)[which(my.HVF[,3] > (median(my.HVF[,3])+mad(my.HVF[,3])))]
+
+# Run the actual PCA
+my.se <- RunPCA(my.se, assay="integrated", group.by = "orig.ident", verbose=F, features=my.HVF)
+# plot
+DimPlot(my.se, reduction = "pca", group.by = "orig.ident")
+```
+Based on PCA separation of samples you can assess how well the integration worked.
+
+Check dimension heatmap to identify cutoff of dimensions to use.
+```{r}
+DimHeatmap(my.se, dims=24:50, cells=500, balanced=TRUE)
+```
+Dimensionality reduction with UMAP
+```{r}
+my.se <- RunUMAP(my.se, reduction = "pca", dims = 1:50, seed.use=763)
+# check for weird batch effects
+DimPlot(my.se, reduction = "umap", group.by = "orig.ident")
+
+```
+Clustering: play around with resolution to find sweet spot based on biological knowldge or downstrat goals.
+```{r}
+my.se <- FindNeighbors(my.se, reduction = "pca", dims = 1:50)
+my.se <- FindClusters(my.se, resolution = 0.5, random.seed = 137)
+
+# recalculate variable features
+DefaultAssay(my.se) <- "RNA"
+my.se <- NormalizeData(my.se, normalization.method = "LogNormalize", scale.factor = 10000, verbose = F)
+my.se <- FindVariableFeatures(my.se, assay = "RNA")
+my.se <- ScaleData(my.se, features = rownames(my.se), verbose = FALSE)
+my.HVF <- HVFInfo(my.se, assay = "RNA")
+my.HVF <- rownames(my.HVF)[which(my.HVF[,3] > (median(my.HVF[,3])))]
+
+# Merge pairs of clusters with less than n DEGs between them
+keep.check <- T
+while (keep.check == T) {
+  keep.check = F
+# Check the tree of clusters, to see what's the relationship between them
+my.se=BuildClusterTree(my.se, dims = my.dimensions, verbose = F)
+plot(Tool(object = my.se, slot = 'BuildClusterTree'))
+# Check only the terminal sisters
+to.check = ips::terminalSisters(my.se@tools$BuildClusterTree)
+  for (i in to.check) {
+    # DE between the sisters
+    my.DE = FindMarkers(my.se, i[1], i[2], test.use = "MAST", #latent.vars = c("CC.Difference"),
+                         min.pct = 0.25, verbose = F, assay = "RNA", features = my.HVF)
+    my.DE = my.DE[which(abs(my.DE$avg_log2FC)>0.5),]
+    my.lDE = length(which(my.DE$p_val_adj<0.05))
+
+    # If less than 5, merge, and repeat
+    if (my.lDE < 5) {
+      my.DE = rownames(my.DE)
+      cat(paste0(my.lDE, " genes differentially expressed between clusters ",i[1]," and ",i[2]," merging \n",
+                  "The genes are: \n",my.DE, "\n \n"))
+      my.se <- SetIdent(my.se, cells = WhichCells(my.se, idents = i[2]), value = i[1])
+      keep.check = T
+    }
+  }
+}
+
+# renumber starting from 1 (of course optional)
+my.ID <- factor(Idents(my.se),levels= levels(Idents(my.se))[ base::order(as.numeric(levels(Idents(my.se))))])
+levels(my.ID) <- 1:length(levels(my.ID))
+my.se[["seurat_clusters"]] <- my.ID
+Idents(my.se) <- "seurat_clusters"
+
+# Plot and check clustering
+DimPlot(my.se, reduction = "umap", group.by = "seurat_clusters", label=TRUE, raster=FALSE)
+```
+Quick QC check per cluster
+```{r}
+qc.df <- melt(my.se[[]][,c(2,3,4,15)])
+ggplot(qc.df, aes(x=seurat_clusters, y=value, fill=seurat_clusters)) +
+	geom_point(position = position_jitter(seed = 1, width = 0.2), alpha=0.1, size=0.5) + 
+	geom_violin(alpha=0.7) +
+	facet_wrap(~variable, ncol=3, scales = "free") +
+	theme_classic() +
+	scale_x_discrete(guide = guide_axis(angle = 45))
+```
+
 ## Marker genes and cell type annotation
