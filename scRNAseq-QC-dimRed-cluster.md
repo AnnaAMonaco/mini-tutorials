@@ -273,3 +273,26 @@ ggplot(qc.df, aes(x=seurat_clusters, y=value, fill=seurat_clusters)) +
 ```
 
 ## Marker genes and cell type annotation
+Start by finding all the marker genes per cluster.
+```{r}
+semarkers <- FindAllMarkers(my.se, only.pos = TRUE, min.pct = 0.25, logfc.threshold =  0.5,
+                           assay = "RNA", features = my.HVF, return.thresh = 0.05, verbose = F)
+my.se@misc$semarkers <- semarkers
+# Take only the top
+top20 <- semarkers %>% 
+  filter(avg_log2FC > 0.5 & p_val_adj < 0.01) %>% 
+  arrange(cluster, desc(avg_log2FC)) %>% 
+  group_by(cluster) %>% top_n(20, avg_log2FC) 
+top3 <- semarkers %>% 
+  filter(avg_log2FC > 0.5 & p_val_adj < 0.01) %>% 
+  arrange(cluster, desc(avg_log2FC)) %>% 
+  group_by(cluster) %>% top_n(3, avg_log2FC)
+```
+Look at the top 3 per cluster: this will already give you an idea of the identity of many clusters based on their biology.
+```{r}
+DotPlot(my.se, features = unique(top3$gene), dot.scale = 6) +
+    RotatedAxis() + scale_y_discrete(limits=rev) + scale_colour_viridis()
+```
+For others you might want to look into the expression of known markers.
+```{r}
+```
