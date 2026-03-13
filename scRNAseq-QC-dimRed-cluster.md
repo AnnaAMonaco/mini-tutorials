@@ -58,7 +58,7 @@ names(sobj) <- my.samplenames
 ```
 
 ## Quality control and filtering
-
+In the quality control step we want to get rid of low quality nuclei, empty droplets with ambient RNA, and doublet nuclei in one doroplet. We start by putting together all samples for handling ease, and checking the three basic parameters we will be using for quality control: number of genes expressed per cell (`nFeature_RNA`), number of RNA molecules -- or UMIs --  per cel (`nCount_RNA`), and percentage of mitochondrial reads. The latter we will need to add manually by identifying the prefix for them in the gene names, in this case "`MT-`".
 ```{r}
 # put the datasets together, if there are many.
 if (length(sobj) > 1) {
@@ -212,7 +212,7 @@ my.se <- RunUMAP(my.se, reduction = "pca", dims = 1:50, seed.use=763)
 DimPlot(my.se, reduction = "umap", group.by = "orig.ident")
 
 ```
-Clustering: play around with resolution to find sweet spot based on biological knowldge or downstrat goals.
+Clustering: play around with resolution to find sweet spot based on biological knowldge or downstream goals.
 ```{r}
 my.se <- FindNeighbors(my.se, reduction = "pca", dims = 1:50)
 my.se <- FindClusters(my.se, resolution = 0.5, random.seed = 137)
@@ -295,4 +295,14 @@ DotPlot(my.se, features = unique(top3$gene), dot.scale = 6) +
 ```
 For others you might want to look into the expression of known markers.
 ```{r}
+DotPlot(my.se, features = toupper(c(
+	# Dermal condensate
+	"Sox2", "Twist2", "Dkk1", "Sox9","Trps1",
+	# Placodes
+    "Edar", "Ctnnb1", "Wnt2", "Wnt7b", "Wnt10a", "Wnt10b",
+	# Keratinocytes
+	"Krt1", "Krt10", "Krt14",
+	# Other fibroblasts
+    "Pdgfra", "Fbln1"),
+	dot.scale = 6) + RotatedAxis() + scale_y_discrete(limits=rev) + scale_colour_viridis()
 ```
