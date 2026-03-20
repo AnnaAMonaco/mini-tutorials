@@ -56,6 +56,9 @@ for (i in 1:length(fryDir)) {
 }
 names(sobj) <- my.samplenames
 ```
+Loading data mapped with `cellranger` directly into a `Surat` object.
+```{r}
+```
 
 ## Quality control and filtering
 In the quality control step we want to get rid of low quality nuclei, empty droplets with ambient RNA, and doublet nuclei in one doroplet. We start by putting together all samples for handling ease, and checking the three basic parameters we will be using for quality control: number of genes expressed per cell (`nFeature_RNA`), number of RNA molecules -- or UMIs --  per cel (`nCount_RNA`), and percentage of mitochondrial reads. The latter we will need to add manually by identifying the prefix for them in the gene names, in this case "`MT-`".
@@ -71,9 +74,13 @@ my.se[["percent.mt"]] <- PercentageFeatureSet(my.se, pattern = "^MT-")
 # first look at QCs: use to set first filtering parameters
 VlnPlot(my.se, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, group.by = "orig.ident", alpha = 0.1)
 ```
+The first visualisation of the QC distributions can be used to identify a first set of threshold, Before removing them completely, we will mark them as "keep" or "not keep", so thata we acn plot all cells, discriminate brtween the ones below or above thresholds, and then refine the thresholds based on the cell-QC distributions. A good starting point for threshod are as follows:
+- Genes per cell: a lower end of ~500, and about 10x as much for the upper limit;
+- UMIs per cell: a lower end of ~500, or at least one UMI per gene, and about 10x as much for the upper limit
+- Mitochondrial reads: customary agreement is a cutoff of 5%, but based on data type this could be as high as 15% (e.g. many *Drosophila* datasets)
 
+**Important note:** quantification with `alevin-fry` will return *all* 10X droplets, including all the empty ones. For this reason, the number of detected "cells" will be much higher pre-filtering than for `cellranger`.
 ```{r}
-VlnPlot(my.se, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, group.by = "orig.ident", alpha = 0.1)
 keep <- rownames(subset(
 	my.se, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & nCount_RNA > 500 & nCount_RNA < 10000 & percent.mt < 3)[[]])
 my.se[[]]$keep <- ifelse(rownames(my.se[[]]) %in% keep, "yes", "no")
