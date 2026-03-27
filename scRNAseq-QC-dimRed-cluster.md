@@ -56,8 +56,10 @@ for (i in 1:length(fryDir)) {
 }
 names(sobj) <- my.samplenames
 ```
-Loading data mapped with `cellranger` directly into a `Surat` object.
+Loading data mapped with `cellranger` directly into a `Seurat` object.
 ```{r}
+my.data <- Read10X(data.dir = "/path/to/cellranger/output/filtered_gene_bc_matrices/")
+sobj <- CreateSeuratObject(counts = my.data, project = "projectName", min.cells = 3, min.features = 200)
 ```
 
 ## Quality control and filtering
@@ -74,7 +76,7 @@ my.se[["percent.mt"]] <- PercentageFeatureSet(my.se, pattern = "^MT-")
 # first look at QCs: use to set first filtering parameters
 VlnPlot(my.se, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, group.by = "orig.ident", alpha = 0.1)
 ```
-The first visualisation of the QC distributions can be used to identify a first set of threshold, Before removing them completely, we will mark them as "keep" or "not keep", so thata we acn plot all cells, discriminate brtween the ones below or above thresholds, and then refine the thresholds based on the cell-QC distributions. A good starting point for threshod are as follows:
+The first visualisation of the QC distributions can be used to identify a first set of threshold. Before removing them completely, we will mark them as "keep" or "not keep", so that we can plot all cells, discriminate between the ones below or above thresholds, and then refine the thresholds based on the cell-QC distributions. A good starting point for threshod are as follows:
 - Genes per cell: a lower end of ~500, and about 10x as much for the upper limit;
 - UMIs per cell: a lower end of ~500, or at least one UMI per gene, and about 10x as much for the upper limit
 - Mitochondrial reads: customary agreement is a cutoff of 5%, but based on data type this could be as high as 15% (e.g. many *Drosophila* datasets)
@@ -85,24 +87,7 @@ keep <- rownames(subset(
 	my.se, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & nCount_RNA > 500 & nCount_RNA < 10000 & percent.mt < 3)[[]])
 my.se[[]]$keep <- ifelse(rownames(my.se[[]]) %in% keep, "yes", "no")
 ```
-```{r}
-ggplot(my.se[[]], aes(x = nFeature_RNA, y = nCount_RNA)) +
-  geom_point(data = subset(my.se[[]], keep == "yes"), aes(col = as.factor(keep))) +
-  geom_point(data = subset(my.se[[]], keep == "no"), aes(col = as.factor(keep))) +
-  scale_color_manual(name = "keep", values = c("yes" = "grey18", "no" = "brown1")) +
-  facet_wrap(~orig.ident) +
-  theme_classic()
-```
-
-```{r}
-ggplot(my.se[[]], aes(x = nFeature_RNA, y = percent.mt)) +
-  geom_point(data = subset(my.se[[]], keep == "yes"), aes(col = as.factor(keep))) +
-  geom_point(data = subset(my.se[[]], keep == "no"), aes(col = as.factor(keep))) +
-  scale_color_manual(name = "keep", values = c("yes" = "grey18", "no" = "brown1")) +
-  facet_wrap(~orig.ident) +
-  theme_classic()
-```
-
+A violin plot of the three values we filtered on can give us a first idea of whether the threshold swe chose or good or could be immediately tweaked, based on the distribution across samples.
 ```{r}
 p1 <- ggplot(my.se[[]], aes(x = orig.ident, y = nFeature_RNA)) +
   geom_jitter(data = subset(my.se[[]], keep == "no"), aes(col = as.factor(keep)), alpha=0.1) +
@@ -125,6 +110,24 @@ p3 <- ggplot(my.se[[]], aes(x = orig.ident, y = percent.mt)) +
   scale_color_manual(name = "keep", values = c("yes" = "grey18", "no" = "brown1")) +
   scale_x_discrete(guide = guide_axis(n.dodge = 2)) + theme_classic()
 plot_grid(p1, p2, p3, align="h", ncol=3)
+```
+The first real filtering plot is a scatter plot of the number of transcript per cell to the number of genes per cell: this relationship should be somewhat linear. Low values for both indicate empty droplets, whereas high values usuall drop off the linear relationship and indicate doublets. Based on this plot, we can tweak our cut-offs.
+```{r}
+ggplot(my.se[[]], aes(x = nFeature_RNA, y = nCount_RNA)) +
+  geom_point(data = subset(my.se[[]], keep == "yes"), aes(col = as.factor(keep))) +
+  geom_point(data = subset(my.se[[]], keep == "no"), aes(col = as.factor(keep))) +
+  scale_color_manual(name = "keep", values = c("yes" = "grey18", "no" = "brown1")) +
+  facet_wrap(~orig.ident) +
+  theme_classic()
+```
+Another useful scatter plot is the number of genes to percentage of mitochondrial reads. Here you expect to see an exponential decay relationship between the two values, with high percentages at low gene values, rapidly decreasing.
+```{r}
+ggplot(my.se[[]], aes(x = nFeature_RNA, y = percent.mt)) +
+  geom_point(data = subset(my.se[[]], keep == "yes"), aes(col = as.factor(keep))) +
+  geom_point(data = subset(my.se[[]], keep == "no"), aes(col = as.factor(keep))) +
+  scale_color_manual(name = "keep", values = c("yes" = "grey18", "no" = "brown1")) +
+  facet_wrap(~orig.ident) +
+  theme_classic()
 ```
 
 ```{r}
