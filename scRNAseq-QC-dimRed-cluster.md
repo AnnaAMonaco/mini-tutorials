@@ -197,9 +197,13 @@ my.anchors <- FindIntegrationAnchors(my.samples, normalization.method = "SCT", a
                                     verbose = FALSE, dims = 1:50, k.filter = 100)
 my.se <- IntegrateData(anchorset = my.anchors, normalization.method = "SCT", verbose = FALSE, preserve.order=TRUE)
 ```
+*Good saving point*: save your integrated data before clustering, so you can play around with different dimensions and resolution.
+
 
 ## Dimensionality reduction and clustering
-Find variable features and run PCA
+Transcriptomic datasets are *high dimensional datasets*, but our brains can only really comprehend and work in 3 of those dimensions. These steps will reduce the dimensions to 2 that we can plot, by collapsing all others baased on how much they drive variability. If this makes no sense whatsoever to you, I recommend the [PCA](https://www.youtube.com/watch?v=FgakZw6K1QQ), [UMAP](https://www.youtube.com/watch?v=eN0wFzBA4Sc), and [tSNE](https://www.youtube.com/watch?v=NEaUSP4YerM) videos from **Joshua Stramer** on **StatQuest**.
+
+Now that we have our different samples in a single dataset, we need to find the new *highly variable features* (HVFs). These will be the genes we use for our *principle component analysis* (PCA), the first step in **dimensionality reduction**. 
 ```{r}
 # get variable features
 my.se <- FindVariableFeatures(my.se, method="sct", assay = "integrated")
@@ -212,23 +216,24 @@ my.se <- RunPCA(my.se, assay="integrated", group.by = "orig.ident", verbose=F, f
 # plot
 DimPlot(my.se, reduction = "pca", group.by = "orig.ident")
 ```
-Based on PCA separation of samples you can assess how well the integration worked.
+Based on the PCA separation of the samples in the integrated dataset, we can assess how well the integration worked: we want the different colours to be as overlapping as possible.
 
-Check dimension heatmap to identify cutoff of dimensions to use.
+PCA is great for fast linear collapsing of high dimensional data onto two axes, but it is not great for exploratory visualisation usually required in genomics. For this non-linear, stochastic methods like **t-SNE** (*t-Distributed Stochastic Neighbor Embedding*) and **UMAP** (*Uniform Manifold Approximation and Projection*) are preferrable. In this walkthrough we use UMAP, but t-SNE can be used just as well -- as long as we keep in mind the differences in their interpretation (or over-interpretation). The main and simplified difference between the two approaches can be summarised as such: t-SNE better preserves local relationships but distorts global structure, while UMAP is better at global structure fidelity at the expense of local relationships.
+
+When running our UMAP (or t-SNE), we will need to choose the number of PC dimensions to work with, so that they are as informative as possible without becoming redundant. there are many ways to choose them, but from experience, in most comparative transcriptomics datasets the first 30 dimensions or so are always informative. To see how many more still contain strong variance, I plot them as a heatmap: when I stop seeing a strong clustering in the genes therein contained, I pull the cut-off. 
 ```{r}
 DimHeatmap(my.se, dims=24:50, cells=500, balanced=TRUE)
 ```
-Dimensionality reduction with UMAP
+In the example above we have good clustering of high vs low expression scores well up to dimension 50, so we run the UMAP on all of these. Since UMAP is a **stochastic** approach, theroetically it will change every time we run it anew: it is important to set a random seed (`set.seed()` at the beginning or `seed.use` in the `RunUMAP()` function) that we can call again in the future to get reproducible plots. To further check how well our integration performed, we can plot the UMAP coloured by sample.
 ```{r}
-my.se <- RunUMAP(my.se, reduction = "pca", dims = 1:50, seed.use=763)
+my.se <- RunUMAP(my.se, reduction="pca", dims=1:50, seed.use=763)
 # check for weird batch effects
-DimPlot(my.se, reduction = "umap", group.by = "orig.ident")
-
+DimPlot(my.se, reduction="umap", group.by="orig.ident")
 ```
-Clustering: play around with resolution to find sweet spot based on biological knowldge or downstream goals.
+The next step that will deeply affect any downstream analysis is the **cell clustering**. At this stage we try to find biologically sensible grouping of cells based on their transcriptional profiles: this required a decent level of knowledge and understanding of our samples, i.e. how many cells types are usually in this tissue, what are the main marker genes of different statuses, etc. I highly recommend playing with the **resolution** to find the sweet spot for how many clusters are identified. Higher resolutions (>1) will lead to more, smaller clusters; smaller resolutions (up to 0.3) will lead to fewer, larger clusters. As shown in the large chunk of code below, we will also then compare the marker genes in each cluster, merging the ones that appear very similar. This is all part of the fine tuning of what is -- in the end of the day -- a completely arbitrary value.
 ```{r}
-my.se <- FindNeighbors(my.se, reduction = "pca", dims = 1:50)
-my.se <- FindClusters(my.se, resolution = 0.5, random.seed = 137)
+my.se <- FindNeighbors(my.se, reduction="pca", dims=1:50)
+my.se <- FindClusters(my.se, resolution=0.5, random.seed=137)
 
 # recalculate variable features
 DefaultAssay(my.se) <- "RNA"
@@ -274,8 +279,9 @@ Idents(my.se) <- "seurat_clusters"
 # Plot and check clustering
 DimPlot(my.se, reduction = "umap", group.by = "seurat_clusters", label=TRUE, raster=FALSE)
 ```
-Quick QC check per cluster
+Once we are happy with our clustering, it is always good to do a QC check on each cluster, to identify some cells that might be clustering together just because they share the same low quality flags.
 ```{r}
+# make sure you are pulling out "nFeature_RNA", "nCount_RNA", and "percent.mt"
 qc.df <- melt(my.se[[]][,c(2,3,4,15)])
 ggplot(qc.df, aes(x=seurat_clusters, y=value, fill=seurat_clusters)) +
 	geom_point(position = position_jitter(seed = 1, width = 0.2), alpha=0.1, size=0.5) + 
@@ -284,6 +290,8 @@ ggplot(qc.df, aes(x=seurat_clusters, y=value, fill=seurat_clusters)) +
 	theme_classic() +
 	scale_x_discrete(guide = guide_axis(angle = 45))
 ```
+*Good saving point*: Now that you have your processed and clustered sample, you can save it before annotating cell types.
+
 
 ## Marker genes and cell type annotation
 Start by finding all the marker genes per cluster.
@@ -319,3 +327,4 @@ DotPlot(my.se, features = toupper(c(
     "Pdgfra", "Fbln1"),
 	dot.scale = 6) + RotatedAxis() + scale_y_discrete(limits=rev) + scale_colour_viridis()
 ```
+*Good saving point*:
