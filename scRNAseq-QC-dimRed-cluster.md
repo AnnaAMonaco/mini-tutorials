@@ -61,6 +61,8 @@ Loading data mapped with `cellranger` directly into a `Seurat` object.
 my.data <- Read10X(data.dir = "/path/to/cellranger/output/filtered_gene_bc_matrices/")
 sobj <- CreateSeuratObject(counts = my.data, project = "projectName", min.cells = 3, min.features = 200)
 ```
+*Good saving point*: save your raw loaded data so you can go back to it and chenge filtering if needed.
+
 
 ## Quality control and filtering
 In the quality control step we want to get rid of low quality nuclei, empty droplets with ambient RNA, and doublet nuclei in one doroplet. We start by putting together all samples for handling ease, and checking the three basic parameters we will be using for quality control: number of genes expressed per cell (`nFeature_RNA`), number of RNA molecules -- or UMIs --  per cel (`nCount_RNA`), and percentage of mitochondrial reads. The latter we will need to add manually by identifying the prefix for them in the gene names, in this case "`MT-`".
@@ -77,9 +79,9 @@ my.se[["percent.mt"]] <- PercentageFeatureSet(my.se, pattern = "^MT-")
 VlnPlot(my.se, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, group.by = "orig.ident", alpha = 0.1)
 ```
 The first visualisation of the QC distributions can be used to identify a first set of threshold. Before removing them completely, we will mark them as "keep" or "not keep", so that we can plot all cells, discriminate between the ones below or above thresholds, and then refine the thresholds based on the cell-QC distributions. A good starting point for threshod are as follows:
-- Genes per cell: a lower end of ~500, and about 10x as much for the upper limit;
-- UMIs per cell: a lower end of ~500, or at least one UMI per gene, and about 10x as much for the upper limit
-- Mitochondrial reads: customary agreement is a cutoff of 5%, but based on data type this could be as high as 15% (e.g. many *Drosophila* datasets)
+- **Genes per cell**: a lower end of ~500, and about 10x as much for the upper limit;
+- **UMIs per cell**: a lower end of ~500, or at least one UMI per gene, and about 10x as much for the upper limit
+- **Mitochondrial reads**: customary agreement is a cutoff of 5%, but based on data type this could be as high as 15% (e.g. many *Drosophila* datasets)
 
 **Important note:** quantification with `alevin-fry` will return *all* 10X droplets, including all the empty ones. For this reason, the number of detected "cells" will be much higher pre-filtering than for `cellranger`.
 ```{r}
@@ -87,7 +89,7 @@ keep <- rownames(subset(
 	my.se, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & nCount_RNA > 500 & nCount_RNA < 10000 & percent.mt < 3)[[]])
 my.se[[]]$keep <- ifelse(rownames(my.se[[]]) %in% keep, "yes", "no")
 ```
-A violin plot of the three values we filtered on can give us a first idea of whether the threshold swe chose or good or could be immediately tweaked, based on the distribution across samples.
+A violin plot of the three values we filtered on can give us a first idea of whether the thresholds we chose are good or could be immediately tweaked, based on the distribution across samples.
 ```{r}
 p1 <- ggplot(my.se[[]], aes(x = orig.ident, y = nFeature_RNA)) +
   geom_jitter(data = subset(my.se[[]], keep == "no"), aes(col = as.factor(keep)), alpha=0.1) +
@@ -129,12 +131,12 @@ ggplot(my.se[[]], aes(x = nFeature_RNA, y = percent.mt)) +
   facet_wrap(~orig.ident) +
   theme_classic()
 ```
-
+Once we have settles on reasonable filtering cut-off, we can effectively subset the `Seurat` object, and split it back into the individual samples, in a list.
 ```{r}
 my.se <- subset(my.se, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & nCount_RNA > 500 & nCount_RNA < 10000 & percent.mt < 3)
 my.samples <- SplitObject(my.se, split.by="orig.ident")
 ```
-Remove doublets
+The final filtering step is to **remove doublets** that are still present after our first filtering step. Here we use `scDblFinder`, which requires the data to be a `SingleCellExperiment` object. After calculating the double score, we can visualise it for each cell in a violin plot relative to the number of UMIs: we expect the cells with the highest scores to be on the high end of UMI counts too.
 ```{r}
 set.seed(2759)
 dbl_list <- list()
@@ -157,6 +159,7 @@ dbl_score <- function(sce) {
 plots <- lapply(dbl_list, dbl_score)
 plot_grid(plotlist=plots, align="h", ncol=2)
 ```
+Finally, we assing a "doublet" or "singlet" status to each cell, and use that to filter the `SingleCellExperiment` object, before transforming it back to a `Seurat` object.
 ```{r}
 # filter out doublets and convert back to seurat object
 sub_sce <- list()
@@ -168,10 +171,11 @@ for (i in seq_along(dbl_list)) {
 }
 names(my.sobj) <- my.samplenames
 ```
+*Good saving point*: Save your unnormalised but filtered data for eventual changes in integration and normalisation strategies.
 
 
 ## Normalisation and integrating multiple datasets
-We regress out sources of uninteresting variation, like cell cycle status and overall RNA amount 
+There are many reasons why cells within and between samples might cluster based on gene expression, several of which are not usually interesting in the light of our biological questions. These factors include cell cycle status, batch effects, overall RNA amount, etc. So before we do any sort of integration and dimensionality reduction, we regress out these sources of uninteresting variation. What we choose to regress out depends on what we are interested in studying.
 ```{r}
 set.seed(374)
 my.cc <- cc.genes.updated.2019
@@ -185,10 +189,9 @@ my.samples <- lapply(X = my.samples, FUN = SCTransform,
                     vars.to.regress = c("nCount_RNA","S.Score", "G2M.Score"),
                     verbose = FALSE, return.only.var.genes = F)
 ```
-We then integrate out datasets based on a subset of the expresse genes, selected using `SelectIntegrationFeatures()`. These can be a specific amount of genes, or a proportion of the overall variable features.
+When we have multiple samples -- either from replicates of from different conditions -- we want to integrate them in order to compare their expression profiles. The integration is based on a subset of the expressed and variable genes, selected using `SelectIntegrationFeatures()`. These can be a specific amount of genes, or a proportion of the overall variable features; in this example, we take 3000 of the variable genes. These will be used as *anchors* between the different samples.
 ```{r}
 my.features <- SelectIntegrationFeatures(object.list = my.samples, nfeatures = 3000)
-options(future.globals.maxSize = 30 * 1024^3)  # 30 GiB
 my.samples <- PrepSCTIntegration(object.list = my.samples, anchor.features = my.features, verbose = FALSE)
 my.anchors <- FindIntegrationAnchors(my.samples, normalization.method = "SCT", anchor.features = my.features,
                                     verbose = FALSE, dims = 1:50, k.filter = 100)
