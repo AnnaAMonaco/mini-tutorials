@@ -136,7 +136,7 @@ Once we have settles on reasonable filtering cut-off, we can effectively subset 
 my.se <- subset(my.se, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & nCount_RNA > 500 & nCount_RNA < 10000 & percent.mt < 3)
 my.samples <- SplitObject(my.se, split.by="orig.ident")
 ```
-The final filtering step is to **remove doublets** that are still present after our first filtering step. Here we use `scDblFinder`, which requires the data to be a `SingleCellExperiment` object. After calculating the double score, we can visualise it for each cell in a violin plot relative to the number of UMIs: we expect the cells with the highest scores to be on the high end of UMI counts too.
+The final filtering step is to **remove doublets** that are still present after our first filtering step. Here we use `scDblFinder`, which requires the data to be a `SingleCellExperiment` object. 
 ```{r}
 set.seed(2759)
 dbl_list <- list()
@@ -156,8 +156,6 @@ dbl_score <- function(sce) {
     theme_classic() + 
     theme(legend.position = "none")
 }
-plots <- lapply(dbl_list, dbl_score)
-plot_grid(plotlist=plots, align="h", ncol=2)
 ```
 Finally, we assing a "doublet" or "singlet" status to each cell, and use that to filter the `SingleCellExperiment` object, before transforming it back to a `Seurat` object.
 ```{r}
@@ -294,12 +292,15 @@ ggplot(qc.df, aes(x=seurat_clusters, y=value, fill=seurat_clusters)) +
 
 
 ## Marker genes and cell type annotation
-Start by finding all the marker genes per cluster.
+To annotate the clusters as cell types, we need to know which genes are driving their clustering, i.e. which are the marker genes per cluster. The `Seurat` function `FindAllMarkers()` does exactly that; in this example, we are calculating marker genes from our HVFs that are expressed in at least 25% of cells in a cluster (`min.pct = 0.25`), that show a log fold-change of at least 0.5 (`logfc.threshold = 0.5`), and that have a *p*-value below 0.05 (`return.thresh = 0.05`). All these values can be played with if we want to increase or decrease stringency.
+
+To help us inspect the markers of each cluster, I recommend pulling out the top 20 and top 3 markers per cluster: the former can be used to look up unfamiliar genes and where they might be expressed in literature, the latter can be plotted to already annotate easily distinguishible cell types.
 ```{r}
-semarkers <- FindAllMarkers(my.se, only.pos = TRUE, min.pct = 0.25, logfc.threshold =  0.5,
+semarkers <- FindAllMarkers(my.se, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.5,
                            assay = "RNA", features = my.HVF, return.thresh = 0.05, verbose = F)
+# embed this information in the object
 my.se@misc$semarkers <- semarkers
-# Take only the top
+# Take only the top for manual inspection
 top20 <- semarkers %>% 
   filter(avg_log2FC > 0.5 & p_val_adj < 0.01) %>% 
   arrange(cluster, desc(avg_log2FC)) %>% 
