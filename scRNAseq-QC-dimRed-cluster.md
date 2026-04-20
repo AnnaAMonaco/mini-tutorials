@@ -199,7 +199,7 @@ my.se <- IntegrateData(anchorset = my.anchors, normalization.method = "SCT", ver
 
 
 ## Dimensionality reduction and clustering
-Transcriptomic datasets are *high dimensional datasets*, but our brains can only really comprehend and work in 3 of those dimensions. These steps will reduce the dimensions to 2 that we can plot, by collapsing all others baased on how much they drive variability. If this makes no sense whatsoever to you, I recommend the [PCA](https://www.youtube.com/watch?v=FgakZw6K1QQ), [UMAP](https://www.youtube.com/watch?v=eN0wFzBA4Sc), and [tSNE](https://www.youtube.com/watch?v=NEaUSP4YerM) videos from **Joshua Stramer** on **StatQuest**.
+Transcriptomic datasets are *high dimensional datasets*, but our brains can only really comprehend and work in 3 of those dimensions. These steps will reduce the dimensions to 2 that we can plot, by collapsing all others baased on how much they drive variability. If this makes no sense whatsoever to you, I recommend the [PCA](https://www.youtube.com/watch?v=FgakZw6K1QQ), [UMAP](https://www.youtube.com/watch?v=eN0wFzBA4Sc), and [tSNE](https://www.youtube.com/watch?v=NEaUSP4YerM) videos from **Joshua Starmer** on **StatQuest**.
 
 Now that we have our different samples in a single dataset, we need to find the new *highly variable features* (HVFs). These will be the genes we use for our *principle component analysis* (PCA), the first step in **dimensionality reduction**. 
 ```{r}
