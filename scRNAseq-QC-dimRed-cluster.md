@@ -328,4 +328,19 @@ DotPlot(my.se, features = toupper(c(
     "Pdgfra", "Fbln1"),
 	dot.scale = 6) + RotatedAxis() + scale_y_discrete(limits=rev) + scale_colour_viridis()
 ```
-*Good saving point*:
+Once you are confident in the identity of the clusters, you can annotate them. Tip: running a categorica enrichment (like GO terms) on the markers of each cluster can help annotate a first, less granular level of identity.
+```{r}
+my.se[[]]$cell_type[my.se[[]]$seurat_clusters == 1] <- "Ebf1+Fbl" 
+my.se[[]]$cell_type[my.se[[]]$seurat_clusters == 2] <- "cKtn" 
+my.se[[]]$cell_type[my.se[[]]$seurat_clusters == 3] <- "preDC"
+#...
+my.se[[]]$cell_type[my.se[[]]$seurat_clusters == 22] <- "mMelano"
+my.se[[]]$cell_type[my.se[[]]$seurat_clusters == 23] <- "Erythro"
+my.se[[]]$cell_type[my.se[[]]$seurat_clusters == 24] <- "Bulge"
+my.se <- SetIdent(my.se, value="cell_type")
+
+# plot UMAP with annotations
+DimPlot(my.se, reduction = "umap", group.by = "cell_type", cols=t.cols, 
+  raster=FALSE, label=TRUE) + ggplot2::theme(legend.position = "none")
+```
+*Good saving point*: Save you annotated and integrated data.
