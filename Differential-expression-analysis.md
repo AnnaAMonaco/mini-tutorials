@@ -1,6 +1,32 @@
 ## Differential expression analysis using DESeq2 on RNA-seq data
 ## Initial mapping steps
+To quantify RNA-seq samples with `salmon`, make sure you have a functional index for it. This requires a transcriptome file and a transcript-to-gene conversion tab. To generate a transcriptome from a genome fasta, extract the sequences using a bed file obtained from the reference GTF.
 ```
+# Convert Gff to bed12 file; remove genePred intermediate once done
+gtfToGenePred -genePredExt annotation/txp.gtf tmp/txp.gp
+genePredToBed tmp/txp.gp bedFiles/txp.bed
+# extract fastas from transcript bed 
+bedtools getfasta -fo tmp/ref.txp.fa \
+  	-name -s -split -fi annotation/ref.fa \
+  	-bed bedFiles/txp.bed
+# Remove the "::chrA:start-end" portion of the fasta header
+awk -F '\\::*' '{print $1""}' tmp/ref.txp.fa > annotation/ref.txp.fa
+rm -r tmp/*
+
+# Make transcript to gene for salmon post-processing
+awk '$3 == "gene" {
+  	match($9, /ID=([^;]+);.*Name=([^;]+)/, a)
+  	gene_id = a[1]
+  	gene_name[gene_id] = a[2]
+  }
+  	$3 == "transcript" {
+  	match($9, /ID=([^;]+);.*Parent=([^;]+)/, b)
+  	tx_id = b[1]
+  	parent_id = b[2]
+  	if (tx_id && parent_id in gene_name) {
+  		print tx_id "\t" gene_name[parent_id]
+  	}
+}' annotation/ref.gff > annotation/ref.txp2gene.tsv
 ```
 ## DESeq2 in R
 Below are the packages needed for this tutorial.
