@@ -1,4 +1,8 @@
 ## Differential expression analysis using DESeq2 on RNA-seq data
+## Initial mapping steps
+```
+```
+## DESeq2 in R
 Below are the packages needed for this tutorial.
 ```
 # for DEG analysis
