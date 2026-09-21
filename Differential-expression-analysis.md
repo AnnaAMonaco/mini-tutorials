@@ -109,7 +109,7 @@ saveRDS(res, "data/Rdata/Exp1-DEGs-lfc1-results.rds")
 saveRDS(f.res, "data/Rdata/Exp1-DEGs-lfc1-results-filtered.rds")
 ```
 
-
+Volcano plots
 ```
 t.res <- list()
 # this function assigns info we can use for aesthetic values later
@@ -151,7 +151,8 @@ shold, alpha=threshold)) +
   ggsave("img/MmAa-E14DOvsVE-volcano.pdf")
 ```
 
-## other plots
+### other plots
+Relative expression boxplot
 ```
 Mm.df <- counts(Mm.dds, normalized=TRUE)["Tbx15",] %>% melt %>%
   mutate(
@@ -183,4 +184,7 @@ p[[2]]<- ggplot(Mm.df, aes(x=skin, y=value, fill=skin, colour=skin)) +
   theme(axis.text.x = element_text(size = 12, angle = 45, hjust = 1))
 plot_grid(plotlist=p, align="v")
 ggsave("img/Tbx15-counts.pdf")
+```
+Differential expression heatmaps
+```
 ```
