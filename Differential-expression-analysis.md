@@ -78,23 +78,15 @@ plot_grid(p1,p2,align="h")
 #save plot
 ggsave("img/Distance-PCAplot.png")
 ```
-### Calculate DEGs
+### Calculate differentially expressed genes (DEGs)
+The `dds` object needs to be normalised using `DESeq2` before running contrasts. When running the contrast with `results()`, the order of the variables to intersect is important: the first one is positive LFC, the second negative LFC. Multiple contrasts can be stored in a list and processed in parallel for subsequent steps.
+```
 # normalisation step
-Aa.dds <- DESeq(Aa.dds)
-Mm.dds <- DESeq(Mm.dds)
+dds <- DESeq(dds)
 res <- list()
-# the order of the variables to intersect is important: the first one is positive LFC, the second negative LFC
-#alpha and lfcThreshold are the p value and LFC cutoff, can be adjusted
-res[[1]] <- results(Aa.dds, contrast=c("intersect", "Do22", "Ve22"), alpha=0.05, lfcThreshold=1, pAdjustMethod="BH")
-res[[2]] <- results(Aa.dds, contrast=c("intersect", "Do25", "Ve25"), alpha=0.05, lfcThreshold=1, pAdjustMethod="BH")
-# pre-placode
-res[[3]] <- results(Aa.dds, contrast=c("intersect", "Do20", "Ve22"), alpha=0.05, lfcThreshold=1, pAdjustMethod="BH")
-# placode
-res[[4]] <- results(Aa.dds, contrast=c("intersect", "Do22", "Ve25"), alpha=0.05, lfcThreshold=1, pAdjustMethod="BH")
-# time-points
-res[[5]] <- results(Aa.dds, contrast=c("intersect", "Do22", "Do20"), alpha=0.05, lfcThreshold=1, pAdjustMethod="BH")
-res[[6]] <- results(Aa.dds, contrast=c("intersect", "Do25", "Do22"), alpha=0.05, lfcThreshold=1, pAdjustMethod="BH")
-res[[7]] <- results(Aa.dds, contrast=c("intersect", "Ve25", "Ve22"), alpha=0.05, lfcThreshold=1, pAdjustMethod="BH")
+# alpha and lfcThreshold are the p value and LFC cutoff, can be adjusted
+res[[1]] <- results(dds, contrast=c("genotype", "GT1", "GT2"), alpha=0.05, lfcThreshold=1, pAdjustMethod="BH")
+res[[2]] <- results(dds, contrast=c("genotype", "GT1", "GT3"), alpha=0.05, lfcThreshold=1, pAdjustMethod="BH")
 
 # you an check the summary of number of DEGs using summary for each contrast
 for (i in seq_along(res)) {
@@ -113,28 +105,12 @@ filter_dataframe <- function(df) {
 f.res <- lapply(res, filter_dataframe)
 
 # save the rds objects to be loaded in the future
-saveRDS(res, "data/Rdata/Aa-DEGs-lfc1-results.rds")
-saveRDS(f.res, "data/Rdata/Aa-DEGs-lfc1-results-filtered.rds")
-
-# save individual txt files as below
-write.table(f.res[[1]], "data/dataframes/ateAlb-E22-DoVsVe-filteredDEGs.txt", quote=FALSE, sep="\t", row.names=FALSE, col.names=TRUE)
-write.table(f.res[[2]], "data/dataframes/ateAlb-E25-DoVsVe-filteredDEGs.txt", quote=FALSE, sep="\t", row.names=FALSE, col.names=TRUE)
-
-write.table(f.res[[3]], "data/dataframes/ateAlb-Do20VsVe22-filteredDEGs.txt", quote=FALSE, sep="\t", row.names=FALSE, col.names=TRUE)
-write.table(f.res[[4]], "data/dataframes/ateAlb-Do22VsVe25-filteredDEGs.txt", quote=FALSE, sep="\t", row.names=FALSE, col.names=TRUE)
-
-write.table(f.res[[5]], "data/dataframes/ateAlb-Do-E20vsE22-filteredDEGs.txt", quote=FALSE, sep="\t", row.names=FALSE, col.names=TRUE)
-write.table(f.res[[6]], "data/dataframes/ateAlb-Do-E22vsE25-filteredDEGs.txt", quote=FALSE, sep="\t", row.names=FALSE, col.names=TRUE)
-write.table(f.res[[7]], "data/dataframes/ateAlb-Ve-E22vsE25-filteredDEGs.txt", quote=FALSE, sep="\t", row.names=FALSE, col.names=TRUE)
-
-saveRDS(Mm.res, "data/Rdata/Mm1214-DEGs-lfc1-results.rds")
-saveRDS(Mm.f.res, "data/Rdata/Mm1214-DEGs-lfc1-results-filtered.rds")
-#write.table(Mm.f.res, "data/dataframes/musMus-E14-DoVsVe-lfc1-results-filtered.txt", quote=FALSE, sep="\t", row.names=FALSE, col.names=TRUE)
+saveRDS(res, "data/Rdata/Exp1-DEGs-lfc1-results.rds")
+saveRDS(f.res, "data/Rdata/Exp1-DEGs-lfc1-results-filtered.rds")
+```
 
 
-###################################
-######### volcano plots ###########
-###################################
+```
 t.res <- list()
 # this function assigns info we can use for aesthetic values later
 add_thresh <- function(df) {
@@ -173,8 +149,10 @@ shold, alpha=threshold)) +
   theme_classic() +
   theme(legend.position = "none")
   ggsave("img/MmAa-E14DOvsVE-volcano.pdf")
-#######################
+```
+
 ## other plots
+```
 Mm.df <- counts(Mm.dds, normalized=TRUE)["Tbx15",] %>% melt %>%
   mutate(
     skin=case_when(
@@ -205,3 +183,4 @@ p[[2]]<- ggplot(Mm.df, aes(x=skin, y=value, fill=skin, colour=skin)) +
   theme(axis.text.x = element_text(size = 12, angle = 45, hjust = 1))
 plot_grid(plotlist=p, align="v")
 ggsave("img/Tbx15-counts.pdf")
+```
