@@ -1,7 +1,8 @@
 ## Differential expression analysis using DESeq2 on RNA-seq data
 ## Initial mapping steps
+*These all happen in bash command line*  
 To quantify RNA-seq samples with `salmon`, make sure you have a functional index for it. This requires a transcriptome file and a transcript-to-gene conversion tab. To generate a transcriptome from a genome fasta, extract the sequences using a bed file obtained from the reference GTF.
-```
+```bash
 # Convert Gff to bed12 file; remove genePred intermediate once done
 gtfToGenePred -genePredExt annotation/txp.gtf tmp/txp.gp
 genePredToBed tmp/txp.gp bedFiles/txp.bed
@@ -13,7 +14,12 @@ bedtools getfasta -fo tmp/ref.txp.fa \
 awk -F '\\::*' '{print $1""}' tmp/ref.txp.fa > annotation/ref.txp.fa
 rm -r tmp/*
 
-# Make transcript to gene for salmon post-processing
+# make index
+salmon index -t annotation/ref.txp.fa -k 31 --keepDuplicates
+```
+Then samples can easily be submitted for quantification with `salmon`, for example using the pipeline in github.com/AnnaAMonaco/genomics-utils/RNA-seq/trim_map_quantify.sh  
+While the pipeline is running, make the transcript to gene for `salmon` post-processing and loading into `DESeq`.
+```bash
 awk '$3 == "gene" {
   	match($9, /ID=([^;]+);.*Name=([^;]+)/, a)
   	gene_id = a[1]
@@ -30,7 +36,7 @@ awk '$3 == "gene" {
 ```
 ## DESeq2 in R
 Below are the packages needed for this tutorial.
-```
+```r
 # for DEG analysis
 library(tximport)
 library(tximportData)
@@ -53,7 +59,7 @@ library(hrbrthemes)
 ```
 ### Load count data
 Start by loading the data quantified with `salmon`; you will need a tab-separated metadata file containing the minimal columns `Run`, `name`, `replicate`, and any other categorical variable that is relevant for your comparison. `Run` must be the name of the sample-specific directory that comes as output from `salmon`, and in the main directory `dir` where your metadata file also lives. The transcript-to-gene (`tx2g`) file is another tab-separated file where one column is the name of the transcript, and the other the name of the gene.
-```
+```r
 dir <- "/path/to/salmon_quant/"
 samples <- read.table(file.path(dir,"metadata.txt"), header=TRUE)
 # tell R where to find the files
@@ -68,7 +74,7 @@ txi <- tximport(files, type="salmon", tx2gene=tx2g)
 
 ### Make DDS object and check quality
 You want to have all samples you will be comparing in one `dds` object, this is important for the normalisation step. In the `dds` generation, `design` tells you what you are comparing; if you have multiple variables, you can combine them as `~var1+var1` or check their interaction with `~var1:var2`, and the most important variable for you comparison always goes last.
-```
+```r
 dds <- DESeqDataSetFromTximport(
           txi,
           colData=samples,
@@ -80,7 +86,7 @@ keep <- rowSums(counts(dds)) >= 10
 dds <- dds[keep,]
 ```
 Before differential expression analysis, we need to compare how similar the samples are to check replicate quality. We do this with two methods: Euclidean distance and principal component analysis (PCA).
-```
+```r
 # variance stabilised transformation for normalisation
 vsd <- vst(dds, blind = FALSE)
 # calculate Euclidean distance
@@ -110,7 +116,7 @@ ggsave("img/Distance-PCAplot.png")
 ```
 ### Calculate differentially expressed genes (DEGs)
 The `dds` object needs to be normalised using `DESeq2` before running contrasts. When running the contrast with `results()`, the order of the variables to intersect is important: the first one is positive LFC, the second negative LFC. Multiple contrasts can be stored in a list and processed in parallel for subsequent steps.
-```
+```r
 # normalisation step
 dds <- DESeq(dds)
 res <- list()
@@ -140,7 +146,7 @@ saveRDS(f.res, "data/Rdata/Exp1-DEGs-lfc1-results-filtered.rds")
 ```
 
 Volcano plots
-```
+```r
 t.res <- list()
 # this function assigns info we can use for aesthetic values later
 add_thresh <- function(df) {
@@ -183,7 +189,7 @@ shold, alpha=threshold)) +
 
 ### other plots
 Relative expression boxplot
-```
+```r
 Mm.df <- counts(Mm.dds, normalized=TRUE)["Tbx15",] %>% melt %>%
   mutate(
     skin=case_when(
@@ -216,5 +222,5 @@ plot_grid(plotlist=p, align="v")
 ggsave("img/Tbx15-counts.pdf")
 ```
 Differential expression heatmaps
-```
+```r
 ```
